@@ -1,0 +1,25 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copiar archivos de dependencias
+COPY package*.json ./
+
+# Instalar dependencias
+RUN npm install
+
+# Copiar el código del frontend
+COPY . .
+
+# Variable de entorno para build time
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+# Construir para producción
+RUN npm run build
+
+# Exponer puerto
+EXPOSE 3000
+
+# Iniciar la aplicación en modo producción
+CMD ["npm", "start"]

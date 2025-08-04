@@ -10,8 +10,6 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: verduleria_db
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -29,10 +27,8 @@ services:
       dockerfile: Dockerfile
     container_name: verduleria_backend
     restart: always
-    ports:
-      - "3001:3001"
     env_file:
-      - ./backend/.env.${ENV:-local}
+      - ./backend/.env.prod
     environment:
       DB_HOST: postgres
     networks:
@@ -40,27 +36,22 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - ./backend/src:/app/src
 
   # Frontend
   frontend:
     build:
       context: ./frontend
-      dockerfile: ${DOCKERFILE:-Dockerfile}
+      dockerfile: Dockerfile.prod
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+        NEXT_PUBLIC_API_URL: /api
     container_name: verduleria_frontend
     restart: always
     env_file:
-      - ./frontend/.env.${ENV:-local}
+      - ./frontend/.env.prod
     networks:
       - verduleria-network
     depends_on:
       - backend
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
 
   # Nginx reverse proxy
   nginx:
@@ -76,22 +67,6 @@ services:
     depends_on:
       - frontend
       - backend
-
-  # pgAdmin (opcional)
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: verduleria_pgadmin
-    restart: always
-    ports:
-      - "5050:80"
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@verduleria.com
-      PGADMIN_DEFAULT_PASSWORD: admin123
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-    networks:
-      - verduleria-network
-    depends_on:
-      - postgres
 
 networks:
   verduleria-network:
