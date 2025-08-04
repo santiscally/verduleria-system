@@ -1,0 +1,9 @@
+version: '3.8'
+
+# Este archivo se usa automáticamente en desarrollo local
+# Sobreescribe valores del docker-compose.yml principal
+
+services:
+  frontend:
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001/api
