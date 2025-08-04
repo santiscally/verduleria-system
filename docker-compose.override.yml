@@ -4,6 +4,9 @@ version: '3.8'
 # Sobreescribe valores del docker-compose.yml principal
 
 services:
+  backend:
+    env_file:
+      - ./backend/.env.local
   frontend:
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:3001/api
+    env_file:
+      - ./frontend/.env.local

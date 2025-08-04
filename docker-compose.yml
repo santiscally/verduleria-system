@@ -31,18 +31,10 @@ services:
     restart: always
     ports:
       - "3001:3001"
+    env_file:
+      - ./backend/.env.${ENV:-local}
     environment:
-      NODE_ENV: development
-      PORT: 3001
       DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: verduleria_db
-      JWT_SECRET: ${JWT_SECRET:-development_secret_key}
-      JWT_EXPIRES_IN: 7d
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
     networks:
       - verduleria-network
     depends_on:
@@ -60,8 +52,8 @@ services:
     restart: always
     ports:
       - "3000:3000"
-    environment:
-      NEXT_PUBLIC_API_URL: http://${API_HOST:-localhost}:3001/api
+    env_file:
+      - ./frontend/.env.${ENV:-local}
     networks:
       - verduleria-network
     depends_on:

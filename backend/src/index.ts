@@ -3,7 +3,7 @@ import { AppDataSource } from './config/database';
 import app from './app';
 import { AuthService } from './services/auth.service';
 
-const PORT = process.env.PORT || 3001;
+const PORT = parseInt(process.env.PORT || '3001');
 
 async function startServer() {
   try {
@@ -20,9 +20,10 @@ async function startServer() {
     await authService.createDefaultUser();
 
     // Iniciar servidor
-    app.listen(PORT, () => {
-      console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
-      console.log(`📝 Documentación: http://localhost:${PORT}/api-docs`);
+    app.listen(PORT, '0.0.0.0', () => {
+      const host = process.env.NODE_ENV === 'development' ? 'localhost' : '0.0.0.0';
+      console.log(`🚀 Servidor corriendo en http://${host}:${PORT}`);
+      console.log(`📝 Documentación: http://${host}:${PORT}/api-docs`);
     });
   } catch (error) {
     console.error('❌ Error al iniciar el servidor:', error);
