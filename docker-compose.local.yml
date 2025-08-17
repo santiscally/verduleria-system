@@ -1,18 +1,73 @@
+# docker-compose.local.yml
 version: '3.8'
 
 services:
   postgres:
-    image: postgres:15-alpine
-    container_name: verduleria_db_local
-    restart: always
+    image: postgres:15
+    container_name: verduleria-postgres-local
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: verduleria_db
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_DB: verduleria_local
     ports:
       - "5432:5432"
     volumes:
       - postgres_data_local:/var/lib/postgresql/data
+    networks:
+      - verduleria-network-local
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: verduleria-backend-local
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres123
+      DB_NAME: verduleria_local
+      JWT_SECRET: local_jwt_secret_change_this
+      JWT_EXPIRES_IN: 7d
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin123
+      NODE_ENV: development
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      - postgres
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - /app/dist
+    networks:
+      - verduleria-network-local
+    command: sh -c "npm install && npm run build && npm run migration:run && node dist/index.js"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: verduleria-frontend-local
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001/api
+      NODE_ENV: development
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - verduleria-network-local
+    command: npm run dev
 
 volumes:
   postgres_data_local:
+
+networks:
+  verduleria-network-local:
+    driver: bridge
