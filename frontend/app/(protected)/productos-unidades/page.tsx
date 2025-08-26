@@ -1,9 +1,9 @@
 // frontend/src/app/productos-unidades/page.tsx
 
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -177,7 +177,7 @@ export default function ProductosUnidadesPage() {
     } catch (error: any) {
       toast({
         title: 'Error',
-        description: error.response?.data?.error || 'Error al guardar',
+        description: error.message || error.response?.data?.error || 'Error al guardar',
         variant: 'destructive',
       });
     }
@@ -252,19 +252,20 @@ export default function ProductosUnidadesPage() {
               <TableHead>Unidad</TableHead>
               <TableHead>Margen %</TableHead>
               <TableHead>Stock</TableHead>
+              <TableHead>Unidad Compra</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center">
+                <TableCell colSpan={6} className="text-center">
                   Cargando...
                 </TableCell>
               </TableRow>
             ) : productosUnidades.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center">
+                <TableCell colSpan={6} className="text-center">
                   No se encontraron relaciones
                 </TableCell>
               </TableRow>
@@ -277,6 +278,33 @@ export default function ProductosUnidadesPage() {
                   <TableCell>{item.unidad_medida?.nombre || '-'}</TableCell>
                   <TableCell>{item.margen_ganancia}%</TableCell>
                   <TableCell>{Number(item.stock_actual).toFixed(0)}</TableCell>
+                  <TableCell>
+                    <Checkbox
+                      checked={item.es_unidad_compra}
+                      onCheckedChange={async (checked) => {
+                        try {
+                          const response = await productoUnidadService.update(item.id!, {
+                            es_unidad_compra: checked as boolean
+                          });
+                          if (response.success) {
+                            toast({
+                              title: 'Éxito',
+                              description: checked 
+                                ? 'Marcado como unidad de compra' 
+                                : 'Desmarcado como unidad de compra',
+                            });
+                            loadData();
+                          }
+                        } catch (error: any) {
+                          toast({
+                            title: 'Error',
+                            description: error.message || 'Error al actualizar unidad de compra',
+                            variant: 'destructive',
+                          });
+                        }
+                      }}
+                    />
+                  </TableCell>
                   <TableCell className="text-right">
                     <Button
                       variant="ghost"
@@ -415,6 +443,20 @@ export default function ProductosUnidadesPage() {
                     setFormData({ ...formData, stock_actual: parseFloat(e.target.value) || 0 })
                   }
                 />
+              </div>
+              <div className="grid gap-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="es_unidad_compra"
+                    checked={formData.es_unidad_compra}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, es_unidad_compra: checked as boolean })
+                    }
+                  />
+                  <Label htmlFor="es_unidad_compra">
+                    Es unidad de compra (solo puede haber una por producto)
+                  </Label>
+                </div>
               </div>
             </div>
             <DialogFooter>

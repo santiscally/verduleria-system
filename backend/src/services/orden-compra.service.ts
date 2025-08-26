@@ -48,21 +48,27 @@ export class OrdenCompraService {
     });
   }
 
+// Reemplazar el método generarSugerencia en orden-compra.service.ts
+// Solo incluyo el método que necesitas cambiar
+
   async generarSugerencia() {
-    // Obtener todos los pedidos pendientes con sus detalles
-    const pedidosPendientes = await this.pedidoRepository.find({
+    // Obtener pedidos pendientes
+    const pedidos = await this.pedidoRepository.find({
       where: { estado: EstadoPedido.PENDIENTE },
       relations: ['detalles', 'detalles.producto_unidad', 'detalles.producto_unidad.producto', 'detalles.producto_unidad.unidad_medida']
     });
 
-    if (pedidosPendientes.length === 0) {
-      return { sugerencias: [], pedidos: [] };
+    if (pedidos.length === 0) {
+      return {
+        sugerencias: [],
+        pedidos: []
+      };
     }
 
-    // Agrupar cantidades por producto (no por producto-unidad)
+    // Agrupar necesidades por producto
     const necesidadesPorProducto = new Map<number, Map<number, number>>();
     
-    for (const pedido of pedidosPendientes) {
+    for (const pedido of pedidos) {
       for (const detalle of pedido.detalles) {
         const productoId = detalle.producto_unidad.producto_id;
         const unidadId = detalle.producto_unidad.unidad_medida_id;
@@ -77,60 +83,61 @@ export class OrdenCompraService {
       }
     }
 
-    // Generar sugerencias considerando stock y conversiones
+    // Generar sugerencias de compra
     const sugerencias: SugerenciaCompra[] = [];
-    
-    for (const [productoId, unidadesCantidades] of necesidadesPorProducto) {
-      // Buscar la unidad de compra por defecto para este producto
-      const unidadCompra = await this.productoUnidadRepository.findOne({
-        where: {
-          producto_id: productoId,
-          es_unidad_compra: true
-        },
+
+    for (const [productoId, unidades] of necesidadesPorProducto.entries()) {
+      // Buscar todas las unidades disponibles para este producto
+      const unidadesCompra = await this.productoUnidadRepository.find({
+        where: { producto_id: productoId },
         relations: ['producto', 'unidad_medida']
       });
 
-      if (!unidadCompra) {
-        // Si no hay unidad de compra, usar cada unidad por separado
-        for (const [unidadId, cantidadNecesaria] of unidadesCantidades) {
-          const productoUnidad = await this.productoUnidadRepository.findOne({
-            where: {
-              producto_id: productoId,
-              unidad_medida_id: unidadId
-            },
-            relations: ['producto', 'unidad_medida']
-          });
+      if (unidadesCompra.length === 0) {
+        console.warn(`Producto ${productoId} sin unidades configuradas`);
+        continue;
+      }
 
-          if (productoUnidad) {
-            const stockActual = Number(productoUnidad.stock_actual);
-            const cantidadAComprar = Math.max(0, cantidadNecesaria - stockActual);
+      // Buscar unidad de compra preferida
+      const unidadCompra = unidadesCompra.find(pu => pu.es_unidad_compra);
+
+      if (!unidadCompra) {
+        // Si NO hay unidad de compra definida, crear una sugerencia por cada unidad de medida
+        console.warn(`Producto ${productoId} sin unidad de compra definida. Generando sugerencias por cada unidad.`);
+        
+        for (const [unidadId, cantidadNecesaria] of unidades.entries()) {
+          const unidadProducto = unidadesCompra.find(pu => pu.unidad_medida_id === unidadId);
+          
+          if (unidadProducto) {
+            const stockActual = Math.floor(Number(unidadProducto.stock_actual));
+            const cantidadNecesariaRedondeada = Math.ceil(cantidadNecesaria);
+            const cantidadAComprar = Math.max(0, cantidadNecesariaRedondeada - stockActual);
 
             if (cantidadAComprar > 0) {
               sugerencias.push({
-                producto_unidad_id: productoUnidad.id,
-                cantidad_necesaria: cantidadNecesaria,
+                producto_unidad_id: unidadProducto.id,
+                cantidad_necesaria: cantidadNecesariaRedondeada,
                 cantidad_stock: stockActual,
                 cantidad_sugerida: cantidadAComprar,
-                producto_unidad: productoUnidad
+                producto_unidad: unidadProducto
               });
             }
           }
         }
-        continue;
+        continue; // Pasar al siguiente producto
       }
 
-      // Convertir todas las cantidades a la unidad de compra
+      // Si HAY unidad de compra, intentar convertir todo a esa unidad
       let totalEnUnidadCompra = 0;
-      let stockTotalEnUnidadCompra = 0;
+      const unidadesSinConversion: Map<number, number> = new Map();
 
-      for (const [unidadId, cantidadNecesaria] of unidadesCantidades) {
+      for (const [unidadId, cantidadNecesaria] of unidades.entries()) {
         if (unidadId === unidadCompra.unidad_medida_id) {
-          // Ya está en unidad de compra
+          // Ya está en la unidad correcta
           totalEnUnidadCompra += cantidadNecesaria;
-          stockTotalEnUnidadCompra += Number(unidadCompra.stock_actual);
         } else {
           // Buscar conversión
-          const conversion = await this.conversionRepository.findOne({
+          const conversionDirecta = await this.conversionRepository.findOne({
             where: {
               producto_id: productoId,
               unidad_origen_id: unidadId,
@@ -138,111 +145,61 @@ export class OrdenCompraService {
             }
           });
 
-          if (conversion) {
-            // Convertir cantidad a unidad de compra
-            const cantidadConvertida = cantidadNecesaria * Number(conversion.factor_conversion);
-            totalEnUnidadCompra += cantidadConvertida;
-            
-            // Obtener stock de esta unidad y convertirlo
-            const productoUnidad = await this.productoUnidadRepository.findOne({
-              where: {
-                producto_id: productoId,
-                unidad_medida_id: unidadId
-              }
-            });
-            
-            if (productoUnidad) {
-              const stockConvertido = Number(productoUnidad.stock_actual) * Number(conversion.factor_conversion);
-              stockTotalEnUnidadCompra += stockConvertido;
+          const conversionInversa = await this.conversionRepository.findOne({
+            where: {
+              producto_id: productoId,
+              unidad_origen_id: unidadCompra.unidad_medida_id,
+              unidad_destino_id: unidadId
             }
+          });
+
+          if (conversionDirecta) {
+            // Si hay conversión directa, convertir y sumar
+            totalEnUnidadCompra += cantidadNecesaria * Number(conversionDirecta.factor_conversion);
+          } else if (conversionInversa) {
+            // Si hay conversión inversa, convertir y sumar
+            totalEnUnidadCompra += cantidadNecesaria / Number(conversionInversa.factor_conversion);
           } else {
-            // Si no hay conversión, es un error pero lo agregamos por separado
-            const productoUnidad = await this.productoUnidadRepository.findOne({
-              where: {
-                producto_id: productoId,
-                unidad_medida_id: unidadId
-              },
-              relations: ['producto', 'unidad_medida']
-            });
-
-            if (productoUnidad) {
-              const stockActual = Number(productoUnidad.stock_actual);
-              const cantidadAComprar = Math.max(0, cantidadNecesaria - stockActual);
-
-              if (cantidadAComprar > 0) {
-                sugerencias.push({
-                  producto_unidad_id: productoUnidad.id,
-                  cantidad_necesaria: cantidadNecesaria,
-                  cantidad_stock: stockActual,
-                  cantidad_sugerida: cantidadAComprar,
-                  producto_unidad: productoUnidad
-                });
-              }
-            }
+            // NO hay conversión - guardar para procesar por separado
+            console.warn(`No se encontró conversión para producto ${productoId} de unidad ${unidadId} a ${unidadCompra.unidad_medida_id}`);
+            unidadesSinConversion.set(unidadId, cantidadNecesaria);
           }
         }
       }
 
-      // Calcular cantidad a comprar considerando stock total
-      const cantidadTotalAComprar = Math.max(0, totalEnUnidadCompra - stockTotalEnUnidadCompra);
+      // Crear sugerencia para la unidad de compra principal (si hay algo que comprar)
+      if (totalEnUnidadCompra > 0) {
+        const stockActual = Math.floor(Number(unidadCompra.stock_actual));
+        const cantidadNecesariaRedondeada = Math.ceil(totalEnUnidadCompra);
+        const cantidadAComprar = Math.max(0, cantidadNecesariaRedondeada - stockActual);
 
-      if (cantidadTotalAComprar > 0) {
-        // Separar en unidades enteras y fracción
-        const unidadesEnteras = Math.floor(cantidadTotalAComprar);
-        const fraccion = cantidadTotalAComprar - unidadesEnteras;
-
-        // Agregar unidades enteras de compra
-        if (unidadesEnteras > 0) {
+        if (cantidadAComprar > 0) {
           sugerencias.push({
             producto_unidad_id: unidadCompra.id,
-            cantidad_necesaria: totalEnUnidadCompra,
-            cantidad_stock: stockTotalEnUnidadCompra,
-            cantidad_sugerida: unidadesEnteras,
+            cantidad_necesaria: cantidadNecesariaRedondeada,
+            cantidad_stock: stockActual,
+            cantidad_sugerida: cantidadAComprar,
             producto_unidad: unidadCompra
           });
         }
+      }
 
-        // Si hay fracción, buscar una unidad menor para expresarla
-        if (fraccion > 0.001) {
-          // Buscar conversiones inversas para encontrar una unidad menor
-          const conversionesInversas = await this.conversionRepository.find({
-            where: {
-              producto_id: productoId,
-              unidad_destino_id: unidadCompra.unidad_medida_id
-            },
-            relations: ['unidad_origen']
-          });
+      // Crear sugerencias separadas para las unidades sin conversión
+      for (const [unidadId, cantidadNecesaria] of unidadesSinConversion.entries()) {
+        const unidadProducto = unidadesCompra.find(pu => pu.unidad_medida_id === unidadId);
+        
+        if (unidadProducto) {
+          const stockActual = Math.floor(Number(unidadProducto.stock_actual));
+          const cantidadNecesariaRedondeada = Math.ceil(cantidadNecesaria);
+          const cantidadAComprar = Math.max(0, cantidadNecesariaRedondeada - stockActual);
 
-          if (conversionesInversas.length > 0) {
-            // Usar la primera unidad menor encontrada
-            const conversionInversa = conversionesInversas[0];
-            const cantidadEnUnidadMenor = fraccion / Number(conversionInversa.factor_conversion);
-            
-            const productoUnidadMenor = await this.productoUnidadRepository.findOne({
-              where: {
-                producto_id: productoId,
-                unidad_medida_id: conversionInversa.unidad_origen_id
-              },
-              relations: ['producto', 'unidad_medida']
-            });
-
-            if (productoUnidadMenor) {
-              sugerencias.push({
-                producto_unidad_id: productoUnidadMenor.id,
-                cantidad_necesaria: 0,
-                cantidad_stock: 0,
-                cantidad_sugerida: cantidadEnUnidadMenor,
-                producto_unidad: productoUnidadMenor
-              });
-            }
-          } else {
-            // Si no hay unidad menor, agregar la fracción en la misma unidad
+          if (cantidadAComprar > 0) {
             sugerencias.push({
-              producto_unidad_id: unidadCompra.id,
-              cantidad_necesaria: 0,
-              cantidad_stock: 0,
-              cantidad_sugerida: fraccion,
-              producto_unidad: unidadCompra
+              producto_unidad_id: unidadProducto.id,
+              cantidad_necesaria: cantidadNecesariaRedondeada,
+              cantidad_stock: stockActual,
+              cantidad_sugerida: cantidadAComprar,
+              producto_unidad: unidadProducto
             });
           }
         }
@@ -251,7 +208,7 @@ export class OrdenCompraService {
 
     return {
       sugerencias,
-      pedidos: pedidosPendientes
+      pedidos
     };
   }
 

@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +26,7 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { ordenCompraService } from '@/services/orden-compra.service';
 import { IOrdenCompra, EstadoOrdenCompra } from '@/types';
-import { Plus, Eye, FileText, XCircle, CheckCircle } from 'lucide-react';
+import { Plus, Eye, FileText, XCircle, CheckCircle, Download } from 'lucide-react';
 
 export default function OrdenesCompraPage() {
   const router = useRouter();
@@ -70,6 +70,22 @@ export default function OrdenesCompraPage() {
     router.push(`/ordenes-compra/${orden.id}`);
   };
 
+  const handleDescargarPDF = async (orden: IOrdenCompra) => {
+    try {
+      await ordenCompraService.descargarPDF(orden.id!);
+      toast({
+        title: 'Éxito',
+        description: 'PDF descargado correctamente',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Error al descargar el PDF',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleConfirmar = (orden: IOrdenCompra) => {
     setSelectedOrden(orden);
     setIsConfirmDialogOpen(true);
@@ -95,11 +111,12 @@ export default function OrdenesCompraPage() {
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'Error al confirmar orden',
+        description: 'Error al confirmar la orden',
         variant: 'destructive',
       });
     } finally {
       setIsConfirmDialogOpen(false);
+      setSelectedOrden(null);
     }
   };
 
@@ -118,48 +135,34 @@ export default function OrdenesCompraPage() {
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'Error al cancelar orden',
+        description: 'Error al cancelar la orden',
         variant: 'destructive',
       });
     } finally {
       setIsCancelDialogOpen(false);
+      setSelectedOrden(null);
     }
   };
 
   const getEstadoBadge = (estado: EstadoOrdenCompra) => {
-    const config = {
-      [EstadoOrdenCompra.BORRADOR]: { label: 'Borrador', className: 'bg-gray-100 text-gray-800' },
-      [EstadoOrdenCompra.CONFIRMADA]: { label: 'Confirmada', className: 'bg-blue-100 text-blue-800' },
-      [EstadoOrdenCompra.EN_PROCESO]: { label: 'En Proceso', className: 'bg-yellow-100 text-yellow-800' },
-      [EstadoOrdenCompra.COMPLETADA]: { label: 'Completada', className: 'bg-green-100 text-green-800' },
-      [EstadoOrdenCompra.CANCELADA]: { label: 'Cancelada', className: 'bg-red-100 text-red-800' },
+    const config: Record<EstadoOrdenCompra, { variant: 'default' | 'secondary' | 'destructive' | 'outline', label: string }> = {
+      [EstadoOrdenCompra.BORRADOR]: { variant: 'secondary', label: 'Borrador' },
+      [EstadoOrdenCompra.CONFIRMADA]: { variant: 'default', label: 'Confirmada' },
+      [EstadoOrdenCompra.EN_PROCESO]: { variant: 'outline', label: 'En Proceso' },
+      [EstadoOrdenCompra.COMPLETADA]: { variant: 'default', label: 'Completada' },
+      [EstadoOrdenCompra.CANCELADA]: { variant: 'destructive', label: 'Cancelada' }
     };
     
-    const { label, className } = config[estado];
-    return <Badge className={className}>{label}</Badge>;
-  };
-
-  const formatDate = (date: Date | string) => {
-    return new Date(date).toLocaleDateString('es-AR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('es-AR', {
-      style: 'currency',
-      currency: 'ARS'
-    }).format(amount);
+    return <Badge variant={config[estado].variant}>{config[estado].label}</Badge>;
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Órdenes de Compra</h1>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold">Órdenes de Compra</h1>
+          <p className="text-gray-500">Gestión de órdenes de compra a proveedores</p>
+        </div>
         <Button onClick={handleNuevaOrden}>
           <Plus className="mr-2 h-4 w-4" />
           Nueva Orden
@@ -170,97 +173,106 @@ export default function OrdenesCompraPage() {
         <CardHeader>
           <CardTitle>Listado de Órdenes</CardTitle>
           <CardDescription>
-            Gestione las órdenes de compra para el mercado
+            Todas las órdenes de compra generadas
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nº Orden</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Items</TableHead>
-                  <TableHead>Total Estimado</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
+          {loading ? (
+            <div className="text-center py-8">Cargando...</div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center">
-                      Cargando...
-                    </TableCell>
+                    <TableHead>N° Orden</TableHead>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Productos</TableHead>
+                    <TableHead>Acciones</TableHead>
                   </TableRow>
-                ) : ordenes.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center">
-                      No se encontraron órdenes de compra
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  ordenes.map((orden) => (
+                </TableHeader>
+                <TableBody>
+                  {ordenes.map((orden) => (
                     <TableRow key={orden.id}>
-                      <TableCell className="font-medium">#{orden.id}</TableCell>
-                      <TableCell>{formatDate(orden.fecha_orden)}</TableCell>
+                      <TableCell className="font-medium">
+                        OC-{String(orden.id).padStart(6, '0')}
+                      </TableCell>
+                      <TableCell>
+                        {new Date(orden.fecha_orden).toLocaleDateString('es-AR')}
+                      </TableCell>
                       <TableCell>{getEstadoBadge(orden.estado)}</TableCell>
-                      <TableCell>{orden.detalles?.length || 0}</TableCell>
-                      <TableCell>{formatCurrency(Number(orden.total_estimado))}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleVerDetalle(orden)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {orden.estado === EstadoOrdenCompra.BORRADOR && (
-                          <>
+                      <TableCell>{orden.detalles?.length || 0} productos</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleVerDetalle(orden)}
+                            title="Ver detalle"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          {orden.estado === EstadoOrdenCompra.CONFIRMADA && (
                             <Button
-                              variant="ghost"
                               size="sm"
-                              onClick={() => handleConfirmar(orden)}
-                            >
-                              <CheckCircle className="h-4 w-4 text-green-600" />
-                            </Button>
-                            <Button
                               variant="ghost"
-                              size="sm"
-                              onClick={() => handleCancelar(orden)}
+                              onClick={() => handleDescargarPDF(orden)}
+                              title="Descargar PDF"
                             >
-                              <XCircle className="h-4 w-4 text-red-600" />
+                              <Download className="h-4 w-4" />
                             </Button>
-                          </>
-                        )}
+                          )}
+                          {orden.estado === EstadoOrdenCompra.BORRADOR && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-green-600"
+                                onClick={() => handleConfirmar(orden)}
+                                title="Confirmar orden"
+                              >
+                                <CheckCircle className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-red-600"
+                                onClick={() => handleCancelar(orden)}
+                                title="Cancelar orden"
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  ))}
+                </TableBody>
+              </Table>
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 mt-4">
-              <Button
-                variant="outline"
-                onClick={() => setPage(page - 1)}
-                disabled={page === 1}
-              >
-                Anterior
-              </Button>
-              <span className="text-sm">
-                Página {page} de {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                onClick={() => setPage(page + 1)}
-                disabled={page === totalPages}
-              >
-                Siguiente
-              </Button>
-            </div>
+              {totalPages > 1 && (
+                <div className="flex justify-center gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setPage(page - 1)}
+                    disabled={page === 1}
+                  >
+                    Anterior
+                  </Button>
+                  <span className="py-2 px-4">
+                    Página {page} de {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    onClick={() => setPage(page + 1)}
+                    disabled={page === totalPages}
+                  >
+                    Siguiente
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -268,10 +280,10 @@ export default function OrdenesCompraPage() {
       <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Confirmar orden de compra?</AlertDialogTitle>
+            <AlertDialogTitle>Confirmar Orden de Compra</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción confirmará la orden de compra #{selectedOrden?.id}.
-              Una vez confirmada, no podrá editarse.
+              ¿Está seguro de confirmar esta orden de compra? Una vez confirmada,
+              podrá proceder con la compra a los proveedores.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -284,15 +296,15 @@ export default function OrdenesCompraPage() {
       <AlertDialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Cancelar orden de compra?</AlertDialogTitle>
+            <AlertDialogTitle>Cancelar Orden de Compra</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción cancelará la orden de compra #{selectedOrden?.id} y
-              revertirá los pedidos a estado pendiente.
+              ¿Está seguro de cancelar esta orden de compra? Esta acción no se
+              puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>No cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={cancelOrder} className="bg-red-600 hover:bg-red-700">
+            <AlertDialogAction onClick={cancelOrder} className="bg-red-600">
               Sí, cancelar orden
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -27,8 +27,20 @@ export const productoUnidadService = {
   },
 
   update: async (id: number, data: Partial<IProductoUnidad>) => {
-    const response = await api.put<IApiResponse<IProductoUnidad>>(`/productos-unidades/${id}`, data);
-    return response.data;
+    try {
+      const response = await api.put<IApiResponse<IProductoUnidad>>(
+        `/productos-unidades/${id}`, 
+        data
+      );
+      return response.data;
+    } catch (error: any) {
+      // Si el servidor devuelve un error con mensaje, propagarlo
+      if (error.response?.data?.error) {
+        throw new Error(error.response.data.error);
+      }
+      // Si no, lanzar un error genérico
+      throw new Error('Error al actualizar la relación producto-unidad');
+    }
   },
 
   delete: async (id: number) => {

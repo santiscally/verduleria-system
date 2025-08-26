@@ -1,3 +1,4 @@
+// frontend/src/services/orden-compra.service.ts
 import api from '@/lib/api';
 import { IApiResponse, IPaginatedResponse, IOrdenCompra } from '@/types';
 
@@ -66,4 +67,19 @@ export const ordenCompraService = {
     const response = await api.post<IApiResponse<IOrdenCompra>>(`/ordenes-compra/${id}/cancelar`);
     return response.data;
   },
+
+  descargarPDF: async (id: number): Promise<void> => {
+    const response = await api.get(`/ordenes-compra/${id}/pdf`, {
+      responseType: 'blob'
+    });
+    
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `orden-compra-${id}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  }
 };

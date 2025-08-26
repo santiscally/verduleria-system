@@ -1,7 +1,9 @@
+// frontend/src/contexts/auth-context.tsx
+
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { authService } from '@/services/auth.service';
 import { ILoginRequest } from '@/types';
 
@@ -24,6 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     checkAuth();
@@ -32,18 +35,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const checkAuth = async () => {
     try {
       const token = authService.getToken();
-      if (token) {
-        const response = await authService.getMe();
-        if (response.success && response.data) {
-          setUser(response.data);
-        } else {
-          setUser(null);
-        }
-      } else {
+      
+      if (!token) {
         setUser(null);
+        setLoading(false);
+        
+        // Si no hay token y no estamos en login, redirigir
+        if (pathname !== '/login') {
+          router.push('/login');
+        }
+        return;
+      }
+
+      // Verificar que el token es válido
+      const response = await authService.getMe();
+      
+      if (response.success && response.data) {
+        setUser(response.data);
+      } else {
+        // Token inválido
+        authService.logout();
+        setUser(null);
+        
+        if (pathname !== '/login') {
+          router.push('/login');
+        }
       }
     } catch (error) {
+      console.error('Error checking auth:', error);
+      // En caso de error, limpiar todo
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
       setUser(null);
+      
+      if (pathname !== '/login') {
+        router.push('/login');
+      }
     } finally {
       setLoading(false);
     }
@@ -62,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     authService.logout();
     setUser(null);
-    router.push('/login');
+    // No necesitamos router.push aquí porque authService.logout() ya hace window.location.href
   };
 
   return (

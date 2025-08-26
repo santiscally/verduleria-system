@@ -100,7 +100,7 @@ export default function ImportarPedidosPage() {
       const productoUnidades = validationResult?.newProductoUnidades.map(pu => ({
         producto: pu.producto,
         unidad: pu.unidad,
-        esUnidadCompra: pu.esUnidadCompra !== undefined ? pu.esUnidadCompra : false,
+        esUnidadCompra:  false,
         esUnidadVenta: pu.esUnidadVenta !== undefined ? pu.esUnidadVenta : true
       })) || [];
 

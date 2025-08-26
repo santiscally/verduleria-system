@@ -1,4 +1,5 @@
 
+import { Not } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { ProductoUnidad } from '../entities/producto-unidad.entity';
 import { Producto } from '../entities/producto.entity';
@@ -91,14 +92,30 @@ export class ProductoUnidadService {
   }
 
   async update(id: number, data: Partial<IProductoUnidad>): Promise<ProductoUnidad> {
-    const productoUnidad = await this.findOne(id);
+    const productoUnidad = await this.productoUnidadRepository.findOne({
+      where: { id },
+      relations: ['producto', 'unidad_medida']
+    });
+
     if (!productoUnidad) {
       throw new Error('Relación producto-unidad no encontrada');
     }
 
-    // No permitir cambiar producto_id o unidad_medida_id
-    delete data.producto_id;
-    delete data.unidad_medida_id;
+    // Validación: Si se está intentando marcar como unidad de compra
+    if (data.es_unidad_compra === true && !productoUnidad.es_unidad_compra) {
+      // Verificar si ya existe otra unidad de compra para este producto
+      const unidadCompraExistente = await this.productoUnidadRepository.findOne({
+        where: {
+          producto_id: productoUnidad.producto_id,
+          es_unidad_compra: true,
+          id: Not(id) // Excluir el registro actual
+        }
+      });
+
+      if (unidadCompraExistente) {
+        throw new Error(`Ya existe una unidad de compra para el producto ${productoUnidad.producto?.nombre || productoUnidad.producto_id}. Solo puede haber una unidad de compra por producto.`);
+      }
+    }
 
     Object.assign(productoUnidad, data);
     return await this.productoUnidadRepository.save(productoUnidad);
