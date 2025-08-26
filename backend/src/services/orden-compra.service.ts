@@ -110,7 +110,7 @@ export class OrdenCompraService {
           
           if (unidadProducto) {
             const stockActual = Math.floor(Number(unidadProducto.stock_actual));
-            const cantidadNecesariaRedondeada = Math.ceil(cantidadNecesaria);
+            const cantidadNecesariaRedondeada = cantidadNecesaria;
             const cantidadAComprar = Math.max(0, cantidadNecesariaRedondeada - stockActual);
 
             if (cantidadAComprar > 0) {
@@ -170,7 +170,7 @@ export class OrdenCompraService {
       // Crear sugerencia para la unidad de compra principal (si hay algo que comprar)
       if (totalEnUnidadCompra > 0) {
         const stockActual = Math.floor(Number(unidadCompra.stock_actual));
-        const cantidadNecesariaRedondeada = Math.ceil(totalEnUnidadCompra);
+        const cantidadNecesariaRedondeada = totalEnUnidadCompra;
         const cantidadAComprar = Math.max(0, cantidadNecesariaRedondeada - stockActual);
 
         if (cantidadAComprar > 0) {
@@ -190,7 +190,7 @@ export class OrdenCompraService {
         
         if (unidadProducto) {
           const stockActual = Math.floor(Number(unidadProducto.stock_actual));
-          const cantidadNecesariaRedondeada = Math.ceil(cantidadNecesaria);
+          const cantidadNecesariaRedondeada = cantidadNecesaria;
           const cantidadAComprar = Math.max(0, cantidadNecesariaRedondeada - stockActual);
 
           if (cantidadAComprar > 0) {
