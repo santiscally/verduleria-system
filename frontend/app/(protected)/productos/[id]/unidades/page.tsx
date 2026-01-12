@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Plus, Edit2, Trash2, Star, ShoppingCart, DollarSign, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, ShoppingCart, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { productoUnidadService } from '@/services/producto-unidad.service';
 import { unidadMedidaService } from '@/services/unidad-medida.service';
@@ -164,9 +163,6 @@ export default function ProductoUnidadesPage() {
     }
   };
 
-  const unidadBase = unidades.find(u => u.es_unidad_base);
-  const tieneUnidadBase = !!unidadBase;
-
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -190,27 +186,20 @@ export default function ProductoUnidadesPage() {
                 {editingUnidad ? 'Editar Unidad' : 'Nueva Unidad'}
               </DialogTitle>
               <DialogDescription>
-                {!tieneUnidadBase && !editingUnidad && (
-                  <Alert className="mt-2">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                      Este producto no tiene unidad base. La primera unidad que agregues debe ser marcada como unidad base.
-                    </AlertDescription>
-                  </Alert>
-                )}
+                Configura las propiedades de la unidad de medida para este producto.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
+            <div className="space-y-4 py-4">
               <div>
                 <Label>Unidad de Medida</Label>
                 <Select
-                  value={formData.unidad_medida_id?.toString() || '0'}
+                  value={formData.unidad_medida_id?.toString() || ''}
                   onValueChange={(value) => setFormData({ ...formData, unidad_medida_id: parseInt(value) })}
-                  disabled={!!editingUnidad}
+                  disabled={editingUnidad !== null}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar" />
+                    <SelectValue placeholder="Seleccionar unidad" />
                   </SelectTrigger>
                   <SelectContent>
                     {unidadesMedida
@@ -253,32 +242,6 @@ export default function ProductoUnidadesPage() {
               <div className="space-y-3 pt-2 border-t">
                 <div className="flex items-center space-x-2">
                   <Checkbox
-                    id="es_unidad_base"
-                    checked={formData.es_unidad_base || false}
-                    onCheckedChange={(checked) => setFormData({ ...formData, es_unidad_base: checked as boolean })}
-                    disabled={tieneUnidadBase && !editingUnidad?.es_unidad_base}
-                  />
-                  <label htmlFor="es_unidad_base" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center gap-2">
-                    <Star className="h-4 w-4 text-yellow-500" />
-                    Unidad Base (para cálculos de costo)
-                  </label>
-                </div>
-                {tieneUnidadBase && !editingUnidad?.es_unidad_base && (
-                  <p className="text-xs text-gray-500 ml-6">
-                    Ya existe una unidad base: {unidadBase?.unidad_medida?.nombre}
-                  </p>
-                )}
-                {!tieneUnidadBase && (
-                  <Alert className="ml-6">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription className="text-xs">
-                      Debes marcar una unidad como base. Esta será la unidad usada para calcular costos reales.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox
                     id="es_unidad_compra"
                     checked={formData.es_unidad_compra || false}
                     onCheckedChange={(checked) => setFormData({ ...formData, es_unidad_compra: checked as boolean })}
@@ -307,23 +270,13 @@ export default function ProductoUnidadesPage() {
               <Button variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button onClick={handleSubmit} disabled={loading || (!tieneUnidadBase && !formData.es_unidad_base && !editingUnidad)}>
+              <Button onClick={handleSubmit} disabled={loading}>
                 {loading ? 'Guardando...' : editingUnidad ? 'Actualizar' : 'Crear'}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
-
-      {!tieneUnidadBase && unidades.length > 0 && (
-        <Alert className="border-yellow-500 bg-yellow-50">
-          <AlertCircle className="h-4 w-4 text-yellow-600" />
-          <AlertDescription className="text-yellow-800">
-            <strong>Configuración incompleta:</strong> Este producto no tiene unidad base definida. 
-            Edita una de las unidades existentes y márcala como unidad base para poder calcular costos correctamente.
-          </AlertDescription>
-        </Alert>
-      )}
 
       <Card>
         <CardHeader>
@@ -336,14 +289,14 @@ export default function ProductoUnidadesPage() {
           {unidades.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <p>No hay unidades configuradas</p>
-              <p className="text-sm">Agrega al menos una unidad base para comenzar</p>
+              <p className="text-sm">Agrega al menos una unidad para comenzar</p>
             </div>
           ) : (
             <div className="space-y-3">
               {unidades.map((unidad) => (
                 <div
                   key={unidad.id}
-                  className={`p-4 rounded-lg border ${unidad.es_unidad_base ? 'border-yellow-500 bg-yellow-50' : 'bg-gray-50'}`}
+                  className="p-4 rounded-lg border bg-gray-50"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
@@ -352,12 +305,6 @@ export default function ProductoUnidadesPage() {
                           {unidad.unidad_medida?.nombre} ({unidad.unidad_medida?.abreviacion})
                         </h3>
                         <div className="flex gap-1">
-                          {unidad.es_unidad_base && (
-                            <Badge variant="default" className="bg-yellow-500">
-                              <Star className="h-3 w-3 mr-1" />
-                              Base
-                            </Badge>
-                          )}
                           {unidad.es_unidad_compra && (
                             <Badge variant="default" className="bg-blue-500">
                               <ShoppingCart className="h-3 w-3 mr-1" />
@@ -372,7 +319,7 @@ export default function ProductoUnidadesPage() {
                           )}
                         </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
                           <p className="text-gray-600">Stock</p>
                           <p className="font-medium">{unidad.stock_actual} {unidad.unidad_medida?.abreviacion}</p>
@@ -381,12 +328,6 @@ export default function ProductoUnidadesPage() {
                           <p className="text-gray-600">Margen</p>
                           <p className="font-medium">{unidad.margen_ganancia}%</p>
                         </div>
-                        {unidad.unidad_base && (
-                          <div>
-                            <p className="text-gray-600">Unidad Base Ref.</p>
-                            <p className="font-medium">{unidad.unidad_base.nombre}</p>
-                          </div>
-                        )}
                       </div>
                     </div>
                     <div className="flex gap-2">
