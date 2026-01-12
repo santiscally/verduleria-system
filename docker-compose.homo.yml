@@ -1,0 +1,86 @@
+# docker-compose.homo.yml - Ambiente de HOMOLOGACIÓN
+# Servidor: vps-4920631-x.dattaweb.com (149.50.142.57)
+# Puerto: 3000
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: verduleria-postgres-homo
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: verduleria_homo_2024!
+      POSTGRES_DB: verduleria_homo
+    volumes:
+      - postgres_data_homo:/var/lib/postgresql/data
+    networks:
+      - verduleria-network-homo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: verduleria-backend-homo
+    restart: always
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: verduleria_homo_2024!
+      DB_NAME: verduleria_homo
+      JWT_SECRET: homo_jwt_secret_verduleria_2024_change_in_prod!
+      JWT_EXPIRES_IN: 7d
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin_homo_2024!
+      NODE_ENV: production
+      PORT: 3001
+    networks:
+      - verduleria-network-homo
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npm run build && npm run migration:run && node dist/index.js"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: /api
+    container_name: verduleria-frontend-homo
+    restart: always
+    environment:
+      NEXT_PUBLIC_API_URL: /api
+      NODE_ENV: production
+    networks:
+      - verduleria-network-homo
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:alpine
+    container_name: verduleria-nginx-homo
+    restart: always
+    ports:
+      - "3000:80"  # Puerto 3000 en el host mapeado al 80 del container
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - verduleria-network-homo
+    depends_on:
+      - frontend
+      - backend
+
+networks:
+  verduleria-network-homo:
+    driver: bridge
+
+volumes:
+  postgres_data_homo:
