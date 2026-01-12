@@ -39,7 +39,7 @@ services:
       JWT_EXPIRES_IN: 7d
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: admin_homo_2024!
-      NODE_ENV: production
+      NODE_ENV: development
       PORT: 3001
     networks:
       - verduleria-network-homo
