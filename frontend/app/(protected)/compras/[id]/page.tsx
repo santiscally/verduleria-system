@@ -1,23 +1,32 @@
+// frontend/src/app/compras/[id]/page.tsx
+
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, Check, X, Edit, Trash2, Package } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, Check, X, Edit2, Save, AlertTriangle, Scale } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { toast } from '@/components/ui/use-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/components/ui/use-toast';
 import { compraService } from '@/services/compra.service';
-import { ICompra, EstadoCompra } from '@/types';
-import { formatCurrency, formatDate } from '@/lib/utils';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@radix-ui/react-select';
+import { ICompra, ICompraDetalle, EstadoCompra } from '@/types';
 
-export default function CompraDetallePage({ params }: { params: { id: string } }) {
+export default function CompraDetallePage() {
+  const params = useParams();
   const router = useRouter();
+  const { toast } = useToast();
+  const compraId = parseInt(params.id as string);
+
   const [compra, setCompra] = useState<ICompra | null>(null);
   const [loading, setLoading] = useState(true);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  
+  // Estados para edición
   const [editingDetalle, setEditingDetalle] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({
     cantidad: 0,
@@ -26,17 +35,25 @@ export default function CompraDetallePage({ params }: { params: { id: string } }
     usar_precio_total: false
   });
 
+  // Estados para kg reales
+  const [editingKg, setEditingKg] = useState<number | null>(null);
+  const [kgRealesInput, setKgRealesInput] = useState<string>('');
+
   useEffect(() => {
     loadCompra();
-  }, [params.id]);
+  }, [compraId]);
 
   const loadCompra = async () => {
     try {
       setLoading(true);
-      const response = await compraService.getOne(parseInt(params.id));
-      
+      const response = await compraService.getOne(compraId);
       if (response.success && response.data) {
         setCompra(response.data);
+        // Cargar warnings
+        const warningsResponse = await compraService.getWarningsKgReales(compraId);
+        if (warningsResponse.success) {
+          setWarnings(warningsResponse.data || []);
+        }
       }
     } catch (error) {
       toast({
@@ -91,12 +108,12 @@ export default function CompraDetallePage({ params }: { params: { id: string } }
     }
   };
 
-  const startEditDetalle = (detalle: any) => {
-    setEditingDetalle(detalle.id);
+  const startEditDetalle = (detalle: ICompraDetalle) => {
+    setEditingDetalle(detalle.id!);
     setEditForm({
-      cantidad: detalle.cantidad,
-      precio_unitario: detalle.precio_unitario,
-      precio_total: detalle.cantidad * detalle.precio_unitario,
+      cantidad: Number(detalle.cantidad),
+      precio_unitario: Number(detalle.precio_unitario),
+      precio_total: Number(detalle.cantidad) * Number(detalle.precio_unitario),
       usar_precio_total: false
     });
   };
@@ -119,10 +136,7 @@ export default function CompraDetallePage({ params }: { params: { id: string } }
       );
       
       if (response.success) {
-        toast({
-          title: 'Éxito',
-          description: 'Detalle actualizado',
-        });
+        toast({ title: 'Éxito', description: 'Detalle actualizado' });
         setEditingDetalle(null);
         loadCompra();
       }
@@ -135,276 +149,305 @@ export default function CompraDetallePage({ params }: { params: { id: string } }
     }
   };
 
-  const handleDeleteDetalle = async (detalleId: number) => {
+  // NUEVO: Guardar kg reales
+  const handleSaveKgReales = async (detalleId: number) => {
     if (!compra) return;
     
+    const kgReales = parseFloat(kgRealesInput);
+    if (isNaN(kgReales) || kgReales <= 0) {
+      toast({
+        title: 'Error',
+        description: 'Ingrese un valor válido mayor a 0',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
-      const response = await compraService.deleteDetalle(compra.id!, detalleId);
+      const response = await compraService.updateKgReales(compra.id!, detalleId, {
+        cantidad_kg_real: kgReales
+      });
+      
       if (response.success) {
-        toast({
-          title: 'Éxito',
-          description: 'Detalle eliminado',
-        });
+        toast({ title: 'Éxito', description: 'Kg reales actualizados' });
+        setEditingKg(null);
+        setKgRealesInput('');
         loadCompra();
       }
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'No se pudo eliminar el detalle',
+        description: 'No se pudo actualizar los kg reales',
         variant: 'destructive',
       });
     }
   };
 
+  const startEditKg = (detalle: ICompraDetalle) => {
+    setEditingKg(detalle.id!);
+    setKgRealesInput(detalle.cantidad_kg_real?.toString() || '');
+  };
+
   const getEstadoBadge = (estado: EstadoCompra) => {
-    const variants: Record<EstadoCompra, { variant: 'default' | 'secondary' | 'destructive', label: string }> = {
+    const variants: Record<EstadoCompra, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
       [EstadoCompra.PENDIENTE]: { variant: 'secondary', label: 'Pendiente' },
       [EstadoCompra.CONFIRMADA]: { variant: 'default', label: 'Confirmada' },
-      [EstadoCompra.CANCELADA]: { variant: 'destructive', label: 'Cancelada' }
+      [EstadoCompra.CANCELADA]: { variant: 'destructive', label: 'Cancelada' },
     };
-    
-    const config = variants[estado];
+    const config = variants[estado] || { variant: 'outline', label: estado };
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
+  // Determina si un detalle necesita kg reales (no está en kg)
+  const necesitaKgReales = (detalle: ICompraDetalle) => {
+    const unidadNombre = detalle.producto_unidad?.unidad_medida?.nombre?.toLowerCase() || '';
+    return !['kg', 'kilo', 'kilogramo', 'kilogramos'].includes(unidadNombre);
+  };
+
   if (loading) {
-    return <div className="text-center py-8">Cargando...</div>;
+    return <div className="flex justify-center items-center h-64">Cargando...</div>;
   }
 
   if (!compra) {
-    return <div className="text-center py-8">Compra no encontrada</div>;
+    return <div className="text-center py-10">Compra no encontrada</div>;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => router.back()}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
             <h1 className="text-3xl font-bold">Compra #{compra.id}</h1>
-            <p className="text-gray-500">Detalle de la compra</p>
+            <p className="text-gray-500">
+              {new Date(compra.fecha_compra).toLocaleDateString('es-AR')}
+            </p>
           </div>
         </div>
-        {compra.estado === EstadoCompra.PENDIENTE && (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="text-green-600 hover:text-green-700"
-              onClick={handleConfirmar}
-            >
-              <Check className="mr-2 h-4 w-4" />
-              Confirmar
-            </Button>
-            <Button
-              variant="outline"
-              className="text-red-600 hover:text-red-700"
-              onClick={handleCancelar}
-            >
-              <X className="mr-2 h-4 w-4" />
-              Cancelar
-            </Button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {getEstadoBadge(compra.estado)}
+        </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Información General</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label>Fecha</Label>
-              <p className="text-lg">{formatDate(compra.fecha_compra)}</p>
-            </div>
-            <div>
-              <Label>Estado</Label>
-              <div className="mt-1">{getEstadoBadge(compra.estado)}</div>
-            </div>
-            <div>
-              <Label>Orden de Compra</Label>
-              <p className="text-lg">
-                {compra.orden_compra_id ? (
-                  <Button
-                    variant="link"
-                    className="p-0 h-auto"
-                    onClick={() => router.push(`/ordenes-compra/${compra.orden_compra_id}`)}
-                  >
-                    #{compra.orden_compra_id}
-                  </Button>
-                ) : (
-                  'Compra Manual'
-                )}
-              </p>
-            </div>
-            <div>
-              <Label>Total</Label>
-              <p className="text-2xl font-bold">{formatCurrency(compra.total_real)}</p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Warnings de kg reales */}
+      {warnings.length > 0 && !compra.confirmada && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Faltan kg reales por ingresar:</strong>
+            <ul className="list-disc list-inside mt-2">
+              {warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Resumen</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>Productos diferentes:</span>
-                <span className="font-medium">{compra.detalles?.length || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Total items:</span>
-                <span className="font-medium">
-                  {compra.detalles?.reduce((sum, d) => sum + Number(d.cantidad), 0) || 0}
-                </span>
-              </div>
-              {compra.confirmada && (
-                <div className="pt-2 border-t">
-                  <div className="flex items-center gap-2 text-green-600">
-                    <Package className="h-4 w-4" />
-                    <span className="font-medium">Stock actualizado</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
+      {/* Info de la compra */}
       <Card>
         <CardHeader>
-          <CardTitle>Detalles de la Compra</CardTitle>
-          <CardDescription>Productos incluidos en esta compra</CardDescription>
+          <CardTitle>Información de la Compra</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {compra.detalles?.map((detalle) => (
-              <div key={detalle.id} className="border rounded-lg p-4">
-                {editingDetalle === detalle.id ? (
-                  <div className="space-y-4">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <Label>Cantidad</Label>
-                        <Input
-                          type="number"
-                          step="0.001"
-                          value={editForm.cantidad}
-                          onChange={(e) => {
-                            const cantidad = parseFloat(e.target.value) || 0;
-                            setEditForm({ 
-                              ...editForm, 
-                              cantidad,
-                              precio_total: cantidad * editForm.precio_unitario
-                            });
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <Label>Tipo de precio</Label>
-                        <Select
-                          value={editForm.usar_precio_total.toString()}
-                          onValueChange={(value) => setEditForm({ ...editForm, usar_precio_total: value === 'true' })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="false">Precio Unitario</SelectItem>
-                            <SelectItem value="true">Precio Total</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {editForm.usar_precio_total ? (
-                        <div>
-                          <Label>Precio Total</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={editForm.precio_total}
-                            onChange={(e) => {
-                              const precio_total = parseFloat(e.target.value) || 0;
-                              setEditForm({ 
-                                ...editForm, 
-                                precio_total,
-                                precio_unitario: editForm.cantidad > 0 ? precio_total / editForm.cantidad : 0
-                              });
-                            }}
-                          />
-                          <p className="text-sm text-gray-500 mt-1">
-                            Precio unitario: {formatCurrency(editForm.cantidad > 0 ? editForm.precio_total / editForm.cantidad : 0)}
-                          </p>
-                        </div>
-                      ) : (
-                        <div>
-                          <Label>Precio Unitario</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={editForm.precio_unitario}
-                            onChange={(e) => {
-                              const precio_unitario = parseFloat(e.target.value) || 0;
-                              setEditForm({ 
-                                ...editForm, 
-                                precio_unitario,
-                                precio_total: editForm.cantidad * precio_unitario
-                              });
-                            }}
-                          />
-                          <p className="text-sm text-gray-500 mt-1">
-                            Total: {formatCurrency(editForm.cantidad * editForm.precio_unitario)}
-                          </p>
-                        </div>
-                      )}
-                      <div className="flex items-end gap-2">
-                        <Button onClick={handleUpdateDetalle}>Guardar</Button>
-                        <Button variant="outline" onClick={() => setEditingDetalle(null)}>
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="font-medium">
-                        {detalle.producto_unidad?.producto?.nombre} - {detalle.producto_unidad?.unidad_medida?.abreviacion}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {detalle.cantidad} x {formatCurrency(detalle.precio_unitario)} = {formatCurrency(detalle.cantidad * detalle.precio_unitario)}
-                      </p>
-                    </div>
-                    {compra.estado === EstadoCompra.PENDIENTE && (
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => startEditDetalle(detalle)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-red-600 hover:text-red-700"
-                          onClick={() => handleDeleteDetalle(detalle.id!)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <Label className="text-gray-500">Estado</Label>
+              <p className="font-medium">{compra.estado}</p>
+            </div>
+            <div>
+              <Label className="text-gray-500">Total</Label>
+              <p className="font-medium text-xl">${Number(compra.total_real).toFixed(2)}</p>
+            </div>
+            <div>
+              <Label className="text-gray-500">Orden de Compra</Label>
+              <p className="font-medium">{compra.orden_compra_id || 'Manual'}</p>
+            </div>
+            <div>
+              <Label className="text-gray-500">Confirmada</Label>
+              <p className="font-medium">{compra.confirmada ? 'Sí' : 'No'}</p>
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Detalles */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Detalles de la Compra</CardTitle>
+          <CardDescription>
+            Para productos que no están en KG, ingrese los kg reales recibidos para calcular el costo correcto
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Producto</TableHead>
+                <TableHead>Cantidad</TableHead>
+                <TableHead>Unidad</TableHead>
+                <TableHead>Precio Unit.</TableHead>
+                <TableHead>Subtotal</TableHead>
+                <TableHead className="bg-yellow-50">Kg Reales</TableHead>
+                <TableHead className="bg-yellow-50">$/kg</TableHead>
+                <TableHead>Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {compra.detalles?.map((detalle) => (
+                <TableRow key={detalle.id}>
+                  <TableCell className="font-medium">
+                    {detalle.producto_unidad?.producto?.nombre || 'N/A'}
+                  </TableCell>
+                  
+                  {/* Cantidad */}
+                  <TableCell>
+                    {editingDetalle === detalle.id ? (
+                      <Input
+                        type="number"
+                        step="0.001"
+                        value={editForm.cantidad}
+                        onChange={(e) => setEditForm({
+                          ...editForm,
+                          cantidad: parseFloat(e.target.value) || 0
+                        })}
+                        className="w-24"
+                      />
+                    ) : (
+                      Number(detalle.cantidad).toFixed(3)
+                    )}
+                  </TableCell>
+                  
+                  {/* Unidad */}
+                  <TableCell>
+                    {detalle.producto_unidad?.unidad_medida?.nombre || 'N/A'}
+                  </TableCell>
+                  
+                  {/* Precio Unitario */}
+                  <TableCell>
+                    {editingDetalle === detalle.id ? (
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={editForm.precio_unitario}
+                        onChange={(e) => setEditForm({
+                          ...editForm,
+                          precio_unitario: parseFloat(e.target.value) || 0
+                        })}
+                        className="w-28"
+                      />
+                    ) : (
+                      `$${Number(detalle.precio_unitario).toFixed(2)}`
+                    )}
+                  </TableCell>
+                  
+                  {/* Subtotal */}
+                  <TableCell className="font-medium">
+                    ${(Number(detalle.cantidad) * Number(detalle.precio_unitario)).toFixed(2)}
+                  </TableCell>
+                  
+                  {/* Kg Reales */}
+                  <TableCell className="bg-yellow-50">
+                    {necesitaKgReales(detalle) ? (
+                      editingKg === detalle.id ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            step="0.001"
+                            value={kgRealesInput}
+                            onChange={(e) => setKgRealesInput(e.target.value)}
+                            className="w-20"
+                            placeholder="0.000"
+                          />
+                          <Button size="sm" variant="ghost" onClick={() => handleSaveKgReales(detalle.id!)}>
+                            <Check className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => { setEditingKg(null); setKgRealesInput(''); }}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          {detalle.cantidad_kg_real ? (
+                            <span className="text-green-600 font-medium">
+                              {Number(detalle.cantidad_kg_real).toFixed(3)} kg
+                            </span>
+                          ) : (
+                            <span className="text-red-500 text-sm">Pendiente</span>
+                          )}
+                          {!compra.confirmada && (
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              onClick={() => startEditKg(detalle)}
+                            >
+                              <Scale className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      )
+                    ) : (
+                      <span className="text-gray-400">N/A (ya en kg)</span>
+                    )}
+                  </TableCell>
+                  
+                  {/* Precio por kg */}
+                  <TableCell className="bg-yellow-50">
+                    {detalle.precio_por_kg ? (
+                      <span className="font-medium text-blue-600">
+                        ${Number(detalle.precio_por_kg).toFixed(2)}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </TableCell>
+                  
+                  {/* Acciones */}
+                  <TableCell>
+                    {!compra.confirmada && (
+                      editingDetalle === detalle.id ? (
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="ghost" onClick={handleUpdateDetalle}>
+                            <Check className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setEditingDetalle(null)}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button size="sm" variant="ghost" onClick={() => startEditDetalle(detalle)}>
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                      )
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Acciones */}
+      {!compra.confirmada && compra.estado !== EstadoCompra.CANCELADA && (
+        <div className="flex justify-end gap-4">
+          <Button variant="outline" onClick={handleCancelar}>
+            <X className="h-4 w-4 mr-2" />
+            Cancelar Compra
+          </Button>
+          <Button onClick={handleConfirmar}>
+            <Check className="h-4 w-4 mr-2" />
+            Confirmar Compra
+            {warnings.length > 0 && (
+              <Badge variant="secondary" className="ml-2">
+                {warnings.length} warnings
+              </Badge>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

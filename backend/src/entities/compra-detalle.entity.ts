@@ -1,3 +1,5 @@
+// backend/src/entities/compra-detalle.entity.ts
+
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from './base.entity';
 import { Compra } from './compra.entity';
@@ -17,6 +19,13 @@ export class CompraDetalle extends BaseEntity implements ICompraDetalle {
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   precio_unitario: number;
+
+  // NUEVOS CAMPOS para manejo de kg reales
+  @Column({ type: 'decimal', precision: 10, scale: 3, nullable: true })
+  cantidad_kg_real: number | null;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  precio_por_kg: number | null;
 
   @ManyToOne(() => Compra, compra => compra.detalles)
   @JoinColumn({ name: 'compra_id' })

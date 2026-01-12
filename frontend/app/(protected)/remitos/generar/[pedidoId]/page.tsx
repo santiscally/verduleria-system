@@ -1,19 +1,21 @@
-// frontend/app/remitos/generar/[pedidoId]/page.tsx
+// frontend/src/app/remitos/nuevo/[pedidoId]/page.tsx
+
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, AlertTriangle, Check } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/components/ui/use-toast';
 import { RemitoService, PrecioSugerido, DetalleRemitoInput } from '@/services/remito.service';
 import { pedidoService } from '@/services/pedido.service';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Label } from '@/components/ui/label';
-// import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { useToast } from '@/components/ui/use-toast';
-import { ArrowLeft, Save } from 'lucide-react';
-import { EstadoPedido } from '@/types';
+import { IPedido } from '@/types';
 
 interface PrecioDetalle {
   pedidoDetalleId: number;
@@ -25,127 +27,139 @@ interface PrecioDetalle {
   tipoPrecio: 'calculado' | 'ultimo' | 'manual';
 }
 
-export default function GenerarRemitoPage() {
-  const router = useRouter();
+export default function NuevoRemitoPage() {
   const params = useParams();
-  const pedidoId = parseInt(params.pedidoId as string);
+  const router = useRouter();
   const { toast } = useToast();
+  const pedidoId = parseInt(params.pedidoId as string);
 
-  const [pedido, setPedido] = useState<any>(null);
+  const [pedido, setPedido] = useState<IPedido | null>(null);
   const [preciosSugeridos, setPreciosSugeridos] = useState<PrecioSugerido[]>([]);
   const [preciosDetalles, setPreciosDetalles] = useState<Record<string, PrecioDetalle>>({});
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
-    cargarDatos();
+    loadData();
   }, [pedidoId]);
 
-  const cargarDatos = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const [pedidoData, preciosData] = await Promise.all([
-        pedidoService.getOne(pedidoId).then(response => response.data),
+      const [pedidoResponse, preciosData] = await Promise.all([
+        pedidoService.getOne(pedidoId),
         RemitoService.obtenerPreciosSugeridos(pedidoId)
       ]);
 
-      if (!pedidoData) {
-        toast({
-          title: 'Error',
-          description: 'No se pudo cargar el pedido',
-          variant: 'destructive'
-        });
+      if (!pedidoResponse.data) {
+        toast({ title: 'Error', description: 'No se pudo cargar el pedido', variant: 'destructive' });
         router.push('/pedidos');
         return;
       }
 
-      setPedido(pedidoData);
+      setPedido(pedidoResponse.data);
       setPreciosSugeridos(preciosData);
 
-      // Verificar que el pedido esté en estado PENDIENTE
-
-      // Verificar que el pedido tenga detalles
-      if (!pedidoData.detalles || pedidoData.detalles.length === 0) {
-        toast({
-          title: 'Error',
-          description: 'El pedido no tiene productos',
-          variant: 'destructive'
-        });
-        router.push('/pedidos');
-        return;
-      }
-
-      // Inicializar precios detalles con precio calculado por defecto
+      // Inicializar precios
       const detallesIniciales: Record<string, PrecioDetalle> = {};
-      pedidoData.detalles.forEach((detalle: any, index: number) => {
-        const precioSugerido = preciosData[index];
-        if (precioSugerido) {
-          const key = `${precioSugerido.productoId}-${precioSugerido.unidadMedidaId}`;
-          detallesIniciales[key] = {
-            pedidoDetalleId: detalle.id,
-            productoId: precioSugerido.productoId,
-            unidadMedidaId: precioSugerido.unidadMedidaId,
-            productoUnidadId: precioSugerido.productoUnidadId,
-            cantidad: detalle.cantidad || 0,
-            precioSeleccionado: precioSugerido.precioCalculado || 0,
-            tipoPrecio: 'calculado'
-          };
-        }
+      preciosData.forEach((precio) => {
+        const key = `${precio.productoId}-${precio.unidadMedidaId}`;
+        detallesIniciales[key] = {
+          pedidoDetalleId: precio.pedidoDetalleId,
+          productoId: precio.productoId,
+          unidadMedidaId: precio.unidadMedidaId,
+          productoUnidadId: precio.productoUnidadId,
+          cantidad: precio.cantidad,
+          precioSeleccionado: precio.precioCalculado || 0,
+          tipoPrecio: 'calculado'
+        };
       });
       setPreciosDetalles(detallesIniciales);
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudieron cargar los datos',
-        variant: 'destructive'
-      });
+      toast({ title: 'Error', description: 'No se pudieron cargar los datos', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleTipoPrecioChange = (key: string, tipo: 'calculado' | 'ultimo' | 'manual') => {
-    const precioIndex = preciosSugeridos.findIndex(p => 
-      key === `${p.productoId}-${p.unidadMedidaId}`
-    );
-    const precioSugerido = preciosSugeridos[precioIndex];
+  // Cambiar unidad de medida
+  const handleUnidadChange = async (key: string, nuevaUnidadId: number, precioSugerido: PrecioSugerido) => {
+    try {
+      const resultado = await RemitoService.recalcularPrecioPorUnidad(
+        precioSugerido.productoId,
+        nuevaUnidadId,
+        preciosDetalles[key]?.cantidad || 1
+      );
 
-    if (!precioSugerido || !preciosDetalles[key]) return;
+      // Actualizar el precio sugerido en la lista
+      const nuevosPrecios = preciosSugeridos.map(p => {
+        if (`${p.productoId}-${p.unidadMedidaId}` === key) {
+          const nuevaUnidad = p.unidadesDisponibles.find(u => u.id === nuevaUnidadId);
+          return {
+            ...p,
+            unidadMedidaId: nuevaUnidadId,
+            productoUnidadId: resultado.productoUnidadId,
+            unidadNombre: nuevaUnidad?.nombre || p.unidadNombre,
+            precioCalculado: resultado.precioSugerido,
+            costoBase: resultado.costoBase,
+            warningConversion: resultado.warning
+          };
+        }
+        return p;
+      });
+      setPreciosSugeridos(nuevosPrecios);
 
+      // Actualizar detalle
+      const nuevoKey = `${precioSugerido.productoId}-${nuevaUnidadId}`;
+      setPreciosDetalles(prev => {
+        const { [key]: old, ...rest } = prev;
+        return {
+          ...rest,
+          [nuevoKey]: {
+            ...old,
+            unidadMedidaId: nuevaUnidadId,
+            productoUnidadId: resultado.productoUnidadId,
+            precioSeleccionado: resultado.precioSugerido,
+            tipoPrecio: 'calculado'
+          }
+        };
+      });
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo recalcular el precio', variant: 'destructive' });
+    }
+  };
+
+  const handleCantidadChange = (key: string, cantidad: number) => {
+    setPreciosDetalles(prev => ({
+      ...prev,
+      [key]: { ...prev[key], cantidad }
+    }));
+  };
+
+  const handlePrecioManualChange = (key: string, precio: number) => {
+    setPreciosDetalles(prev => ({
+      ...prev,
+      [key]: { ...prev[key], precioSeleccionado: precio, tipoPrecio: 'manual' }
+    }));
+  };
+
+  const handleTipoPrecioChange = (key: string, tipo: 'calculado' | 'ultimo', precioSugerido: PrecioSugerido) => {
     let nuevoPrecio = 0;
     if (tipo === 'calculado') {
-      nuevoPrecio = precioSugerido.precioCalculado || 0;
+      nuevoPrecio = precioSugerido.precioCalculado;
     } else if (tipo === 'ultimo' && precioSugerido.ultimoPrecioCobrado) {
       nuevoPrecio = precioSugerido.ultimoPrecioCobrado;
     }
 
-    setPreciosDetalles({
-      ...preciosDetalles,
-      [key]: {
-        ...preciosDetalles[key],
-        tipoPrecio: tipo,
-        precioSeleccionado: nuevoPrecio
-      }
-    });
-  };
-
-  const handlePrecioManualChange = (key: string, valor: string) => {
-    if (!preciosDetalles[key]) return;
-    
-    const precio = parseFloat(valor) || 0;
-    setPreciosDetalles({
-      ...preciosDetalles,
-      [key]: {
-        ...preciosDetalles[key],
-        precioSeleccionado: precio,
-        tipoPrecio: 'manual'
-      }
-    });
+    setPreciosDetalles(prev => ({
+      ...prev,
+      [key]: { ...prev[key], precioSeleccionado: nuevoPrecio, tipoPrecio: tipo }
+    }));
   };
 
   const calcularTotal = () => {
-    return Object.values(preciosDetalles).reduce((total, precioDetalle) => {
-      return total + ((precioDetalle.cantidad || 0) * (precioDetalle.precioSeleccionado || 0));
+    return Object.values(preciosDetalles).reduce((total, d) => {
+      return total + (d.cantidad * d.precioSeleccionado);
     }, 0);
   };
 
@@ -153,26 +167,22 @@ export default function GenerarRemitoPage() {
     try {
       setGuardando(true);
       
-      const detalles: DetalleRemitoInput[] = Object.values(preciosDetalles).map(detalle => ({
-        pedidoDetalleId: detalle.pedidoDetalleId,
-        productoUnidadId: detalle.productoUnidadId,
-        cantidad: detalle.cantidad,
-        precio: detalle.precioSeleccionado
+      const detalles: DetalleRemitoInput[] = Object.values(preciosDetalles).map(d => ({
+        pedidoDetalleId: d.pedidoDetalleId,
+        productoUnidadId: d.productoUnidadId,
+        cantidad: d.cantidad,
+        precio: d.precioSeleccionado
       }));
 
-      await RemitoService.crearRemito(pedidoId, detalles);
+      const remito = await RemitoService.crearRemito(pedidoId, detalles);
       
-      toast({
-        title: 'Éxito',
-        description: 'Remito generado correctamente'
-      });
-      
-      router.push('/remitos');
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudo generar el remito',
-        variant: 'destructive'
+      toast({ title: 'Éxito', description: 'Remito generado correctamente' });
+      router.push(`/remitos/${remito.id}`);
+    } catch (error: any) {
+      toast({ 
+        title: 'Error', 
+        description: error.response?.data?.message || 'No se pudo generar el remito', 
+        variant: 'destructive' 
       });
     } finally {
       setGuardando(false);
@@ -180,29 +190,53 @@ export default function GenerarRemitoPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-      </div>
-    );
+    return <div className="flex justify-center items-center h-64">Cargando...</div>;
   }
 
   return (
-    <div className="container mx-auto py-6">
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" onClick={() => router.back()}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <div>
+          <h1 className="text-3xl font-bold">Generar Remito</h1>
+          <p className="text-gray-500">
+            Pedido #{pedidoId} - {pedido?.cliente?.nombre}
+          </p>
+        </div>
+      </div>
+
+      {/* Info del cliente */}
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <CardTitle>Información del Cliente</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-4">
             <div>
-              <CardTitle>Generar Remito</CardTitle>
-              <CardDescription>
-                Pedido #{pedido?.id} - {pedido?.cliente?.nombre}
-              </CardDescription>
+              <Label className="text-gray-500">Nombre</Label>
+              <p className="font-medium">{pedido?.cliente?.nombre}</p>
             </div>
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Volver
-            </Button>
+            <div>
+              <Label className="text-gray-500">Dirección</Label>
+              <p className="font-medium">{pedido?.cliente?.direccion || 'N/A'}</p>
+            </div>
+            <div>
+              <Label className="text-gray-500">Teléfono</Label>
+              <p className="font-medium">{pedido?.cliente?.telefono || 'N/A'}</p>
+            </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Detalles del remito */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Detalles del Remito</CardTitle>
+          <CardDescription>
+            Puede editar cantidad, unidad y precio. El precio por kg es solo referencia.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -211,86 +245,135 @@ export default function GenerarRemitoPage() {
                 <TableHead>Producto</TableHead>
                 <TableHead>Cantidad</TableHead>
                 <TableHead>Unidad</TableHead>
-                <TableHead>Costo</TableHead>
+                <TableHead className="bg-blue-50">$/kg (ref)</TableHead>
+                <TableHead>Costo Base</TableHead>
                 <TableHead>Margen</TableHead>
-                <TableHead>Precio Calc.</TableHead>
+                <TableHead>Precio Calculado</TableHead>
                 <TableHead>Último Precio</TableHead>
                 <TableHead>Precio Final</TableHead>
                 <TableHead>Subtotal</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pedido?.detalles?.map((detalle: any, index: number) => {
-                const precioSugerido = preciosSugeridos[index];
-                if (!precioSugerido) return null;
-                
-                const key = `${precioSugerido.productoId}-${precioSugerido.unidadMedidaId}`;
-                const precioDetalle = preciosDetalles[key];
+              {preciosSugeridos.map((precio) => {
+                const key = `${precio.productoId}-${precio.unidadMedidaId}`;
+                const detalle = preciosDetalles[key];
                 
                 return (
-                  <TableRow key={detalle.id || index}>
-                    <TableCell>{precioSugerido.productoNombre || detalle.producto_unidad?.producto?.nombre || `Producto ${precioSugerido.productoId}`}</TableCell>
-                    <TableCell>{detalle.cantidad || 0}</TableCell>
-                    <TableCell>{precioSugerido.unidadNombre || detalle.producto_unidad?.unidad_medida?.nombre || `Unidad ${precioSugerido.unidadMedidaId}`}</TableCell>
-                    <TableCell>${(precioSugerido.costoBase || 0).toFixed(2)}</TableCell>
-                    <TableCell>{precioSugerido.margenGanancia || 0}%</TableCell>
+                  <TableRow key={key}>
+                    {/* Producto */}
                     <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <input 
-                          type="radio" 
-                          value="calculado" 
-                          name={`precio-${key}`}
-                          checked={precioDetalle?.tipoPrecio === 'calculado'}
-                          onChange={(e) => handleTipoPrecioChange(key, e.target.value as any)}
-                          id={`calc-${key}`} 
-                        />
-                        <Label htmlFor={`calc-${key}`}>
-                          ${(precioSugerido.precioCalculado || 0).toFixed(2)}
-                        </Label>
+                      <div>
+                        <p className="font-medium">{precio.productoNombre}</p>
+                        {precio.warningConversion && (
+                          <div className="flex items-center gap-1 text-orange-500 text-xs mt-1">
+                            <AlertTriangle className="h-3 w-3" />
+                            {precio.warningConversion}
+                          </div>
+                        )}
                       </div>
                     </TableCell>
+                    
+                    {/* Cantidad (editable) */}
                     <TableCell>
-                      {precioSugerido.ultimoPrecioCobrado ? (
-                        <div className="flex items-center space-x-2">
-                          <input 
-                            type="radio" 
-                            value="ultimo" 
-                            name={`precio-${key}`}
-                            checked={precioDetalle?.tipoPrecio === 'ultimo'}
-                            onChange={(e) => handleTipoPrecioChange(key, e.target.value as any)}
-                            id={`ultimo-${key}`} 
-                          />
-                          <Label htmlFor={`ultimo-${key}`}>
-                            ${(precioSugerido.ultimoPrecioCobrado || 0).toFixed(2)}
-                          </Label>
-                        </div>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={detalle?.cantidad || 0}
+                        onChange={(e) => handleCantidadChange(key, parseFloat(e.target.value) || 0)}
+                        className="w-20"
+                      />
+                    </TableCell>
+                    
+                    {/* Unidad (dropdown) */}
+                    <TableCell>
+                      <Select
+                        value={precio.unidadMedidaId.toString()}
+                        onValueChange={(v) => handleUnidadChange(key, parseInt(v), precio)}
+                      >
+                        <SelectTrigger className="w-28">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {precio.unidadesDisponibles.map((u) => (
+                            <SelectItem key={u.id} value={u.id.toString()}>
+                              {u.nombre}
+                              {u.factorConversion === null && ' ⚠️'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    
+                    {/* Precio por kg (no editable, referencia) */}
+                    <TableCell className="bg-blue-50">
+                      {precio.precioPorKg ? (
+                        <span className="font-medium text-blue-600">
+                          ${precio.precioPorKg.toFixed(2)}
+                        </span>
                       ) : (
-                        <span className="text-gray-400">N/A</span>
+                        <span className="text-orange-500 text-sm">Sin dato</span>
                       )}
                     </TableCell>
+                    
+                    {/* Costo Base */}
                     <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <input 
-                          type="radio" 
-                          value="manual" 
+                      ${precio.costoBase.toFixed(2)}
+                    </TableCell>
+                    
+                    {/* Margen */}
+                    <TableCell>
+                      {precio.margenGanancia}%
+                    </TableCell>
+                    
+                    {/* Precio Calculado (radio) */}
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
                           name={`precio-${key}`}
-                          checked={precioDetalle?.tipoPrecio === 'manual'}
-                          onChange={(e) => handleTipoPrecioChange(key, e.target.value as any)}
-                          id={`manual-${key}`} 
+                          checked={detalle?.tipoPrecio === 'calculado'}
+                          onChange={() => handleTipoPrecioChange(key, 'calculado', precio)}
                         />
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={precioDetalle?.tipoPrecio === 'manual' ? precioDetalle.precioSeleccionado : ''}
-                          onChange={(e) => handlePrecioManualChange(key, e.target.value)}
-                          placeholder="0.00"
-                          className="w-24"
-                          disabled={precioDetalle?.tipoPrecio !== 'manual'}
-                        />
+                        <span className={detalle?.tipoPrecio === 'calculado' ? 'font-medium' : ''}>
+                          ${precio.precioCalculado.toFixed(2)}
+                        </span>
                       </div>
                     </TableCell>
+                    
+                    {/* Último Precio (radio) */}
+                    <TableCell>
+                      {precio.ultimoPrecioCobrado ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name={`precio-${key}`}
+                            checked={detalle?.tipoPrecio === 'ultimo'}
+                            onChange={() => handleTipoPrecioChange(key, 'ultimo', precio)}
+                          />
+                          <span className={detalle?.tipoPrecio === 'ultimo' ? 'font-medium' : ''}>
+                            ${precio.ultimoPrecioCobrado.toFixed(2)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </TableCell>
+                    
+                    {/* Precio Final (editable) */}
+                    <TableCell>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={detalle?.precioSeleccionado || 0}
+                        onChange={(e) => handlePrecioManualChange(key, parseFloat(e.target.value) || 0)}
+                        className="w-24"
+                      />
+                    </TableCell>
+                    
+                    {/* Subtotal */}
                     <TableCell className="font-medium">
-                      ${((detalle.cantidad || 0) * (precioDetalle?.precioSeleccionado || 0)).toFixed(2)}
+                      ${((detalle?.cantidad || 0) * (detalle?.precioSeleccionado || 0)).toFixed(2)}
                     </TableCell>
                   </TableRow>
                 );
@@ -298,17 +381,37 @@ export default function GenerarRemitoPage() {
             </TableBody>
           </Table>
 
-          <div className="mt-6 flex justify-between items-center">
-            <div className="text-xl font-semibold">
-              Total: ${calcularTotal().toFixed(2)}
+          {/* Total */}
+          <div className="mt-6 flex justify-end">
+            <div className="text-right">
+              <Label className="text-gray-500">Total del Remito</Label>
+              <p className="text-3xl font-bold">${calcularTotal().toFixed(2)}</p>
             </div>
-            <Button onClick={generarRemito} disabled={guardando}>
-              <Save className="mr-2 h-4 w-4" />
-              {guardando ? 'Generando...' : 'Generar Remito'}
-            </Button>
           </div>
         </CardContent>
       </Card>
+
+      {/* Warnings globales */}
+      {preciosSugeridos.some(p => p.warningConversion) && (
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            Algunos productos no tienen precio por kg registrado o falta conversión. 
+            Los precios pueden no ser precisos.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Acciones */}
+      <div className="flex justify-end gap-4">
+        <Button variant="outline" onClick={() => router.back()}>
+          Cancelar
+        </Button>
+        <Button onClick={generarRemito} disabled={guardando}>
+          <Check className="h-4 w-4 mr-2" />
+          {guardando ? 'Generando...' : 'Generar Remito'}
+        </Button>
+      </div>
     </div>
   );
 }

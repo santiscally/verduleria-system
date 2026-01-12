@@ -1,3 +1,5 @@
+// backend/src/services/compra.service.ts
+
 import { AppDataSource } from '../config/database';
 import { Compra } from '../entities/compra.entity';
 import { CompraDetalle } from '../entities/compra-detalle.entity';
@@ -6,12 +8,18 @@ import { OrdenCompra } from '../entities/orden-compra.entity';
 import { OrdenCompraDetalle } from '../entities/orden-compra-detalle.entity';
 import { ProductoUnidad } from '../entities/producto-unidad.entity';
 import { Pedido } from '../entities/pedido.entity';
+import { UnidadMedida } from '../entities/unidad-medida.entity';
+import { Conversion } from '../entities/conversion.entity';
 import { ICompra, EstadoCompra, EstadoOrdenCompra, EstadoPedido } from '../types';
 
 interface CompraDetalleInput {
   producto_unidad_id: number;
   cantidad: number;
   precio_unitario: number;
+}
+
+interface UpdateKgRealesInput {
+  cantidad_kg_real: number;
 }
 
 export class CompraService {
@@ -22,6 +30,8 @@ export class CompraService {
   private ordenCompraDetalleRepository = AppDataSource.getRepository(OrdenCompraDetalle);
   private productoUnidadRepository = AppDataSource.getRepository(ProductoUnidad);
   private pedidoRepository = AppDataSource.getRepository(Pedido);
+  private unidadMedidaRepository = AppDataSource.getRepository(UnidadMedida);
+  private conversionRepository = AppDataSource.getRepository(Conversion);
 
   async findAll(page: number = 1, limit: number = 10) {
     const [data, total] = await this.compraRepository.findAndCount({
@@ -65,7 +75,6 @@ export class CompraService {
     await queryRunner.startTransaction();
 
     try {
-      // Verificar que la orden existe y está confirmada
       const ordenCompra = await this.ordenCompraRepository.findOne({
         where: { id: ordenCompraId },
         relations: ['detalles']
@@ -79,7 +88,6 @@ export class CompraService {
         throw new Error('La orden de compra debe estar confirmada');
       }
 
-      // Verificar que no existe ya una compra para esta orden
       const compraExistente = await this.compraRepository.findOne({
         where: { orden_compra_id: ordenCompraId }
       });
@@ -88,7 +96,6 @@ export class CompraService {
         throw new Error('Ya existe una compra para esta orden');
       }
 
-      // Crear la compra
       const compra = this.compraRepository.create({
         orden_compra_id: ordenCompraId,
         fecha_compra: new Date(),
@@ -99,20 +106,20 @@ export class CompraService {
 
       const compraGuardada = await queryRunner.manager.save(compra);
 
-      // Crear detalles de compra
       let totalReal = 0;
       for (const detalle of detalles) {
         const compraDetalle = this.compraDetalleRepository.create({
           compra_id: compraGuardada.id,
           producto_unidad_id: detalle.producto_unidad_id,
           cantidad: detalle.cantidad,
-          precio_unitario: detalle.precio_unitario
+          precio_unitario: detalle.precio_unitario,
+          cantidad_kg_real: null,
+          precio_por_kg: null
         });
 
         await queryRunner.manager.save(compraDetalle);
         totalReal += detalle.cantidad * detalle.precio_unitario;
 
-        // Actualizar cantidad comprada en la orden de compra
         await queryRunner.manager.update(
           OrdenCompraDetalle,
           { 
@@ -123,12 +130,10 @@ export class CompraService {
         );
       }
 
-      // Actualizar total real
       compraGuardada.total_real = totalReal;
       await queryRunner.manager.save(compraGuardada);
 
-      // Actualizar estado de la orden a EN_PROCESO
-      ordenCompra.estado = EstadoOrdenCompra.EN_PROCESO;
+      ordenCompra.estado = EstadoOrdenCompra.COMPLETADA;
       await queryRunner.manager.save(ordenCompra);
 
       await queryRunner.commitTransaction();
@@ -148,7 +153,6 @@ export class CompraService {
     await queryRunner.startTransaction();
 
     try {
-      // Crear la compra sin orden asociada
       const compra = this.compraRepository.create({
         fecha_compra: new Date(),
         estado: EstadoCompra.PENDIENTE,
@@ -158,21 +162,21 @@ export class CompraService {
 
       const compraGuardada = await queryRunner.manager.save(compra);
 
-      // Crear detalles de compra
       let totalReal = 0;
       for (const detalle of detalles) {
         const compraDetalle = this.compraDetalleRepository.create({
           compra_id: compraGuardada.id,
           producto_unidad_id: detalle.producto_unidad_id,
           cantidad: detalle.cantidad,
-          precio_unitario: detalle.precio_unitario
+          precio_unitario: detalle.precio_unitario,
+          cantidad_kg_real: null,
+          precio_por_kg: null
         });
 
         await queryRunner.manager.save(compraDetalle);
         totalReal += detalle.cantidad * detalle.precio_unitario;
       }
 
-      // Actualizar total real
       compraGuardada.total_real = totalReal;
       await queryRunner.manager.save(compraGuardada);
 
@@ -220,11 +224,9 @@ export class CompraService {
         throw new Error('No se puede modificar una compra confirmada');
       }
 
-      // Actualizar detalle
       Object.assign(detalle, data);
       await queryRunner.manager.save(detalle);
 
-      // Recalcular total
       const detalles = await queryRunner.manager.find(CompraDetalle, {
         where: { compra_id: id }
       });
@@ -245,6 +247,68 @@ export class CompraService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  // NUEVO: Método para actualizar kg reales de un detalle
+  async updateKgReales(compraId: number, detalleId: number, data: UpdateKgRealesInput) {
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const detalle = await this.compraDetalleRepository.findOne({
+        where: { id: detalleId, compra_id: compraId },
+        relations: ['compra', 'producto_unidad', 'producto_unidad.unidad_medida']
+      });
+
+      if (!detalle) {
+        throw new Error('Detalle no encontrado');
+      }
+
+      if (detalle.compra.confirmada) {
+        throw new Error('No se puede modificar una compra confirmada');
+      }
+
+      // Calcular precio por kg
+      const totalPagado = Number(detalle.cantidad) * Number(detalle.precio_unitario);
+      const precioPorKg = totalPagado / data.cantidad_kg_real;
+
+      detalle.cantidad_kg_real = data.cantidad_kg_real;
+      detalle.precio_por_kg = precioPorKg;
+
+      await queryRunner.manager.save(detalle);
+      await queryRunner.commitTransaction();
+
+      return detalle;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // NUEVO: Obtener warnings de detalles sin kg reales
+  async getWarningsKgReales(compraId: number): Promise<string[]> {
+    const compra = await this.findOne(compraId);
+    if (!compra) {
+      throw new Error('Compra no encontrada');
+    }
+
+    const warnings: string[] = [];
+
+    for (const detalle of compra.detalles || []) {
+      const unidadNombre = detalle.producto_unidad?.unidad_medida?.nombre?.toLowerCase() || '';
+      const esKg = ['kg', 'kilo', 'kilogramo', 'kilogramos'].includes(unidadNombre);
+
+      if (!esKg && detalle.cantidad_kg_real === null) {
+        const productoNombre = detalle.producto_unidad?.producto?.nombre || 'Producto desconocido';
+        const unidad = detalle.producto_unidad?.unidad_medida?.nombre || 'unidad';
+        warnings.push(`${productoNombre} (${detalle.cantidad} ${unidad}): Falta ingresar kg reales`);
+      }
+    }
+
+    return warnings;
   }
 
   async deleteDetalle(id: number, detalleId: number) {
@@ -271,7 +335,6 @@ export class CompraService {
         throw new Error('Detalle no encontrado');
       }
 
-      // Recalcular total
       const detalles = await queryRunner.manager.find(CompraDetalle, {
         where: { compra_id: id }
       });
@@ -292,6 +355,7 @@ export class CompraService {
     }
   }
 
+  // MODIFICADO: Confirmar compra con lógica de precio_por_kg
   async confirmar(id: number) {
     const queryRunner = AppDataSource.createQueryRunner();
     await queryRunner.connect();
@@ -311,10 +375,10 @@ export class CompraService {
         throw new Error('La compra no tiene detalles');
       }
 
-      // Actualizar stock de productos
       for (const detalle of compra.detalles) {
         const productoUnidad = await this.productoUnidadRepository.findOne({
-          where: { id: detalle.producto_unidad_id }
+          where: { id: detalle.producto_unidad_id },
+          relations: ['unidad_medida']
         });
 
         if (!productoUnidad) {
@@ -325,27 +389,44 @@ export class CompraService {
         productoUnidad.stock_actual = Number(productoUnidad.stock_actual) + Number(detalle.cantidad);
         await queryRunner.manager.save(productoUnidad);
 
+        // Calcular precio_por_kg si no se ingresó manualmente
+        let precioPorKg = detalle.precio_por_kg;
+        
+        const unidadNombre = productoUnidad.unidad_medida?.nombre?.toLowerCase() || '';
+        const esKg = ['kg', 'kilo', 'kilogramo', 'kilogramos'].includes(unidadNombre);
+
+        if (esKg) {
+          precioPorKg = Number(detalle.precio_unitario);
+          detalle.cantidad_kg_real = Number(detalle.cantidad);
+          detalle.precio_por_kg = precioPorKg;
+          await queryRunner.manager.save(detalle);
+        } else if (precioPorKg === null && detalle.cantidad_kg_real !== null) {
+          const totalPagado = Number(detalle.cantidad) * Number(detalle.precio_unitario);
+          precioPorKg = totalPagado / Number(detalle.cantidad_kg_real);
+          detalle.precio_por_kg = precioPorKg;
+          await queryRunner.manager.save(detalle);
+        }
+
         // Registrar en histórico de precios de compra
         const historico = this.historicoPreciosCompraRepository.create({
           producto_unidad_id: detalle.producto_unidad_id,
           compra_id: id,
           precio: detalle.precio_unitario,
+          precio_por_kg: precioPorKg,
           fecha: new Date()
         });
         await queryRunner.manager.save(historico);
       }
 
-      // Actualizar estado de la compra
       compra.estado = EstadoCompra.CONFIRMADA;
       compra.confirmada = true;
       await queryRunner.manager.save(compra);
 
-      // Si tiene orden asociada, actualizar su estado
       if (compra.orden_compra_id) {
         await queryRunner.manager.update(
-          OrdenCompra,
-          compra.orden_compra_id,
-          { estado: EstadoOrdenCompra.COMPLETADA }
+          Pedido,
+          { estado: EstadoPedido.EN_COMPRA, incluido_en_compra: true },
+          { estado: EstadoPedido.EN_PROCESO }
         );
       }
 
@@ -361,57 +442,38 @@ export class CompraService {
   }
 
   async cancelar(id: number) {
-    const queryRunner = AppDataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
-      const compra = await this.findOne(id);
-      if (!compra) {
-        throw new Error('Compra no encontrada');
-      }
-
-      if (compra.confirmada) {
-        throw new Error('No se puede cancelar una compra confirmada');
-      }
-
-      // Actualizar estado de la compra
-      compra.estado = EstadoCompra.CANCELADA;
-      await queryRunner.manager.save(compra);
-
-      // Si tiene orden asociada, revertir su estado
-      if (compra.orden_compra_id) {
-        await queryRunner.manager.update(
-          OrdenCompra,
-          compra.orden_compra_id,
-          { estado: EstadoOrdenCompra.CONFIRMADA }
-        );
-
-        // Limpiar cantidades compradas
-        await queryRunner.manager.update(
-          OrdenCompraDetalle,
-          { orden_compra_id: compra.orden_compra_id },
-          { cantidad_comprada: () => 'NULL' }
-        );
-      }
-
-      await queryRunner.commitTransaction();
-
-      return compra;
-    } catch (error) {
-      await queryRunner.rollbackTransaction();
-      throw error;
-    } finally {
-      await queryRunner.release();
+    const compra = await this.findOne(id);
+    if (!compra) {
+      throw new Error('Compra no encontrada');
     }
+
+    if (compra.confirmada) {
+      throw new Error('No se puede cancelar una compra confirmada');
+    }
+
+    compra.estado = EstadoCompra.CANCELADA;
+    return await this.compraRepository.save(compra);
   }
 
   async getHistoricoPreciosCompra(productoUnidadId: number, limit: number = 10) {
     return await this.historicoPreciosCompraRepository.find({
       where: { producto_unidad_id: productoUnidadId },
-      relations: ['compra'],
       order: { fecha: 'DESC' },
-      take: limit
+      take: limit,
+      relations: ['producto_unidad', 'producto_unidad.producto', 'producto_unidad.unidad_medida']
     });
+  }
+
+  // NUEVO: Obtener último precio por kg de un producto
+  async getUltimoPrecioPorKg(productoId: number): Promise<number | null> {
+    const historico = await this.historicoPreciosCompraRepository
+      .createQueryBuilder('hpc')
+      .innerJoin('hpc.producto_unidad', 'pu')
+      .where('pu.producto_id = :productoId', { productoId })
+      .andWhere('hpc.precio_por_kg IS NOT NULL')
+      .orderBy('hpc.fecha', 'DESC')
+      .getOne();
+
+    return historico?.precio_por_kg || null;
   }
 }

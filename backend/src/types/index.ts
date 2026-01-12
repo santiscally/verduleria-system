@@ -1,4 +1,4 @@
-// src/types/index.ts
+// backend/src/types/index.ts
 
 // Enums
 export enum EstadoPedido {
@@ -142,12 +142,15 @@ export interface ICompra {
   updated_at?: Date;
 }
 
+// MODIFICADO: Agregar campos para kg reales y precio por kg
 export interface ICompraDetalle {
   id?: number;
   compra_id: number;
   producto_unidad_id: number;
   cantidad: number;
   precio_unitario: number;
+  cantidad_kg_real?: number | null;  // NUEVO: kg reales recibidos
+  precio_por_kg?: number | null;      // NUEVO: precio calculado por kg
   producto_unidad?: IProductoUnidad;
   created_at?: Date;
   updated_at?: Date;
@@ -179,17 +182,19 @@ export interface IHistoricoPrecios {
   updated_at?: Date;
 }
 
+// MODIFICADO: Agregar precio_por_kg al histórico de compra
 export interface IHistoricoPreciosCompra {
   id?: number;
   producto_unidad_id: number;
   compra_id: number;
   precio: number;
+  precio_por_kg?: number | null;  // NUEVO
   fecha: Date;
   producto_unidad?: IProductoUnidad;
-  compra?: ICompra;
   created_at?: Date;
   updated_at?: Date;
 }
+
 // DTOs para importación
 export interface IPedidoImportRow {
   cliente: string;
@@ -225,4 +230,15 @@ export interface IPaginatedResponse<T> {
   page: number;
   limit: number;
   totalPages: number;
+}
+
+export interface IPaginatedApiResponse<T> {
+  success: boolean;
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  error?: string;
+  message?: string;
 }

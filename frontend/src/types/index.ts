@@ -1,4 +1,4 @@
-// src/types/index.ts
+// frontend/src/types/index.ts
 
 // Enums
 export enum EstadoPedido {
@@ -148,6 +148,8 @@ export interface ICompraDetalle {
   producto_unidad_id: number;
   cantidad: number;
   precio_unitario: number;
+  cantidad_kg_real?: number | null;
+  precio_por_kg?: number | null;
   producto_unidad?: IProductoUnidad;
   created_at?: Date;
   updated_at?: Date;
@@ -179,7 +181,19 @@ export interface IHistoricoPrecios {
   updated_at?: Date;
 }
 
-// DTOs para importación
+export interface IHistoricoPreciosCompra {
+  id?: number;
+  producto_unidad_id: number;
+  compra_id: number;
+  precio: number;
+  precio_por_kg?: number | null;
+  fecha: Date;
+  producto_unidad?: IProductoUnidad;
+  created_at?: Date;
+  updated_at?: Date;
+}
+
+// DTOs
 export interface IPedidoImportRow {
   cliente: string;
   producto: string;
@@ -187,7 +201,6 @@ export interface IPedidoImportRow {
   cantidad: number;
 }
 
-// DTOs para requests/responses
 export interface ILoginRequest {
   username: string;
   password: string;

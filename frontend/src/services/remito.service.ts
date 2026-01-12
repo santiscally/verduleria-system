@@ -1,7 +1,16 @@
 // frontend/src/services/remito.service.ts
+
 import api from '@/lib/api';
 
-// Tipos temporales hasta que se actualicen en @/types
+export interface UnidadDisponible {
+  id: number;
+  productoUnidadId: number;
+  nombre: string;
+  abreviacion: string;
+  precioSugerido: number;
+  factorConversion: number | null;
+}
+
 export interface PrecioSugerido {
   pedidoDetalleId: number;
   productoId: number;
@@ -12,8 +21,20 @@ export interface PrecioSugerido {
   precioCalculado: number;
   ultimoPrecioCobrado: number | null;
   costoBase: number;
+  precioPorKg: number | null;
   margenGanancia: number;
   cantidad: number;
+  unidadesDisponibles: UnidadDisponible[];
+  warningConversion: string | null;
+}
+
+export interface RecalcularPrecioResponse {
+  productoUnidadId: number;
+  precioSugerido: number;
+  precioPorKg: number | null;
+  costoBase: number;
+  factorConversion: number | null;
+  warning: string | null;
 }
 
 export interface DetalleRemitoInput {
@@ -30,8 +51,8 @@ export interface Remito {
   total: number;
   entregado: boolean;
   fecha_entrega?: string;
-  pedido?: any; // Pedido type
-  historico_precios?: any[]; // HistoricoPrecios[]
+  pedido?: any;
+  historico_precios?: any[];
   createdAt: string;
   updatedAt: string;
 }
@@ -42,17 +63,19 @@ export class RemitoService {
     return response.data;
   }
 
+  // NUEVO: Recalcular precio al cambiar unidad
+  static async recalcularPrecioPorUnidad(productoId: number, unidadId: number, cantidad?: number): Promise<RecalcularPrecioResponse> {
+    const params = cantidad ? `?cantidad=${cantidad}` : '';
+    const response = await api.get(`/remitos/recalcular-precio/${productoId}/${unidadId}${params}`);
+    return response.data.data;
+  }
+
   static async crearRemito(pedidoId: number, detalles: DetalleRemitoInput[]): Promise<Remito> {
     const response = await api.post('/remitos', { pedidoId, detalles });
     return response.data;
   }
 
-  static async obtenerRemitos(filtros?: {
-    clienteId?: number;
-    estado?: string;
-    fechaDesde?: string;
-    fechaHasta?: string;
-  }): Promise<Remito[]> {
+  static async obtenerRemitos(filtros?: { clienteId?: number; estado?: string; fechaDesde?: string; fechaHasta?: string }): Promise<Remito[]> {
     const response = await api.get('/remitos', { params: filtros });
     return response.data;
   }
@@ -73,10 +96,7 @@ export class RemitoService {
   }
 
   static async descargarPDF(id: number): Promise<void> {
-    const response = await api.get(`/remitos/${id}/pdf`, {
-      responseType: 'blob'
-    });
-    
+    const response = await api.get(`/remitos/${id}/pdf`, { responseType: 'blob' });
     const url = window.URL.createObjectURL(new Blob([response.data]));
     const link = document.createElement('a');
     link.href = url;

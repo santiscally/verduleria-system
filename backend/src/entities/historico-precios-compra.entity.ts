@@ -1,3 +1,5 @@
+// backend/src/entities/historico-precios-compra.entity.ts
+
 import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { BaseEntity } from './base.entity';
 import { ProductoUnidad } from './producto-unidad.entity';
@@ -15,6 +17,10 @@ export class HistoricoPreciosCompra extends BaseEntity implements IHistoricoPrec
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   precio: number;
+
+  // NUEVO CAMPO: precio por kg calculado en base a los kg reales
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  precio_por_kg: number | null;
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   fecha: Date;
