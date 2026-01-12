@@ -37,8 +37,7 @@ export default function ProductoUnidadesPage() {
     margen_ganancia: 50,
     stock_actual: 0,
     es_unidad_compra: false,
-    es_unidad_venta: true,
-    es_unidad_base: false
+    es_unidad_venta: true
   });
 
   useEffect(() => {
@@ -89,8 +88,7 @@ export default function ProductoUnidadesPage() {
         margen_ganancia: 50,
         stock_actual: 0,
         es_unidad_compra: false,
-        es_unidad_venta: true,
-        es_unidad_base: false
+        es_unidad_venta: true
       });
     }
     setDialogOpen(true);
